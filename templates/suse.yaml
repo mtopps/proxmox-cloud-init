@@ -1,0 +1,87 @@
+#cloud-config
+users:
+  - name: matt
+    gecos: Matt
+    groups: [sudo, docker, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    home: /home/matt
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+  - name: s-ansible
+    gecos: s-ansible
+    groups: [sudo, docker, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1040
+    home: /home/s-ansible
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+groups:
+  - docker
+  - sudo
+
+timezone: Pacific/Auckland
+swap:
+  filename: none
+  size: 0
+
+preserve_hostname: false
+manage_etc_hosts: true
+ssh:
+  emit_keys_to_console: false
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - htop
+  - net-tools
+  - containerd
+  - apparmor-parser
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - modprobe br_netfilter
+  # Add repositories and install packages
+  - zypper --non-interactive addrepo https://download.docker.com/linux/sles/docker-ce.repo
+  - zypper --non-interactive --gpg-auto-import-keys refresh
+  - zypper --non-interactive install containerd.io
+  - containerd config default | tee /etc/containerd/config.toml >/dev/null 2>&1
+  - sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+  - systemctl restart containerd && systemctl enable containerd
+  # Add Kubernetes repository and install
+  - zypper --non-interactive addrepo --type yum --gpgcheck-strict https://pkgs.k8s.io/core:/stable:/v1.32/rpm/ kubernetes
+  - zypper --non-interactive --gpg-auto-import-keys refresh
+  - zypper --non-interactive install kubelet kubeadm kubectl
+  - systemctl enable kubelet
+  - sysctl --system
+
+write_files:
+  - path: /etc/modules-load.d/containerd.conf
+    content: |
+      br_netfilter
+      overlay
+
+  - path: /etc/sysctl.d/99-kubernetes-cri.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1

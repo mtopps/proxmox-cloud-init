@@ -1,0 +1,71 @@
+#cloud-config
+users:
+  - name: matt
+    gecos: Matt
+    groups: [adm, docker, users, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    home: /home/matt
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+  - name: s-ansible
+    gecos: Ansible User
+    groups: [adm, sudo, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    home: /home/s-ansible
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+timezone: Pacific/Auckland
+swap:
+  filename: none
+  size: 0
+
+preserve_hostname: false
+manage_etc_hosts: true
+ssh:
+  emit_keys_to_console: false
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - htop
+  - net-tools
+  - apt-transport-https
+  - ca-certificates
+  - gnupg2
+  - software-properties-common
+  - lsb-release
+
+apt:
+  preserve_sources_list: true
+  conf: |
+      APT {
+          Get {
+              Assume-Yes 'true';
+              Fix-Broken 'true';
+              Install-Recommends 'false';
+          }
+      }
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - sysctl --system

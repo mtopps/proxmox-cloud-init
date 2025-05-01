@@ -1,0 +1,64 @@
+#cloud-config
+users:
+  - name: matt
+    gecos: Matt
+    groups: [wheel, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+groups:
+  - wheel
+
+timezone: Pacific/Auckland
+swap:
+  filename: none
+  size: 0
+
+preserve_hostname: false
+manage_etc_hosts: true
+hostname: null
+fqdn: null
+ssh:
+  emit_keys_to_console: false
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - htop
+  - net-tools
+  - yum-utils
+  - device-mapper-persistent-data
+  - lvm2
+  - dnf-plugins-core
+  - epel-release
+  - policycoreutils-python-utils
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - sysctl --system
+  - restorecon -Rv /home
+  - semanage login -a -s user_u matt
+
+write_files:
+  - path: /etc/selinux/config
+    content: |
+      SELINUX=enforcing
+      SELINUXTYPE=targeted

@@ -1,0 +1,98 @@
+#cloud-config
+users:
+  - name: matt
+    gecos: Matt
+    groups: [wheel, docker, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    home: /home/matt
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+  - name: s-ansible
+    gecos: s-ansible
+    groups: [wheel, docker, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1040
+    home: /home/s-ansible
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+groups:
+  - docker
+  - wheel
+
+timezone: Pacific/Auckland
+swap:
+  filename: none
+  size: 0
+
+preserve_hostname: false
+manage_etc_hosts: true
+ssh:
+  emit_keys_to_console: false
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - htop
+  - net-tools
+  - yum-utils
+  - device-mapper-persistent-data
+  - lvm2
+  - dnf-plugins-core
+  - epel-release
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - modprobe br_netfilter
+  - dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  - dnf -y install containerd.io
+  - containerd config default | tee /etc/containerd/config.toml >/dev/null 2>&1
+  - sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+  - systemctl restart containerd && systemctl enable containerd
+  - cat <<EOF2 > /etc/yum.repos.d/kubernetes.repo
+    [kubernetes]
+    name=Kubernetes
+    baseurl=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/
+    enabled=1
+    gpgcheck=1
+    gpgkey=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/repodata/repomd.xml.key
+    EOF2
+  - dnf -y install kubelet kubeadm kubectl
+  - systemctl enable kubelet
+  - sysctl --system
+
+write_files:
+  - path: /etc/modules-load.d/containerd.conf
+    content: |
+      br_netfilter
+      overlay
+
+  - path: /etc/sysctl.d/99-kubernetes-cri.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+
+  - path: /etc/selinux/config
+    content: |
+      SELINUX=permissive
+      SELINUXTYPE=targeted

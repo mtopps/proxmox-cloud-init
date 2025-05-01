@@ -1,0 +1,99 @@
+#cloud-config
+users:
+  - name: matt
+    gecos: Matt
+    groups: [adm, docker, users, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    home: /home/matt
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+  - name: s-ansible
+    gecos: Ansible User
+    groups: [adm, sudo, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    home: /home/s-ansible
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+groups:
+  - docker
+
+timezone: Pacific/Auckland
+swap:
+  filename: none
+  size: 0
+
+preserve_hostname: false
+manage_etc_hosts: true
+ssh:
+  emit_keys_to_console: false
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - htop
+  - net-tools
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg2
+  - software-properties-common
+  - lsb-release
+
+apt:
+  preserve_sources_list: true
+  conf: |
+      APT {
+          Get {
+              Assume-Yes 'true';
+              Fix-Broken 'true';
+              Install-Recommends 'false';
+          }
+      }
+
+runcmd:
+  - mkdir -p -m 755 /etc/apt/keyrings
+  - systemctl daemon-reload
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - modprobe br_netfilter
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmour -o /etc/apt/trusted.gpg.d/docker.gpg
+  - add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  - apt update && apt install -y containerd.io
+  - containerd config default | tee /etc/containerd/config.toml >/dev/null 2>&1
+  - sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+  - systemctl restart containerd && systemctl enable containerd
+  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  - echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list
+  - apt update && apt install -y kubelet kubeadm kubectl
+  - apt-mark hold kubelet kubeadm kubectl
+  - sysctl --system
+
+write_files:
+  - path: /etc/modules-load.d/containerd.conf
+    content: |
+      br_netfilter
+      overlay
+
+  - path: /etc/sysctl.d/99-kubernetes-cri.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1

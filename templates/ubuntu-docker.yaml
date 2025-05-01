@@ -1,0 +1,79 @@
+#cloud-config
+groups:
+  - docker
+
+users:
+  - name: matt
+    gecos: Matt
+    groups: [adm, docker, users, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    home: /home/matt
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+  - name: s-ansible
+    gecos: Ansible User
+    groups: [adm, sudo, users]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    home: /home/s-ansible
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+timezone: Pacific/Auckland
+preserve_hostname: false
+manage_etc_hosts: true
+
+swap:
+  filename: none
+  size: 0
+
+ssh:
+  install-server: true
+  allow-pw: true
+  disable_root: false
+  ssh_quiet_keygen: true
+  allow_public_ssh_keys: true
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+apt:
+  preserve_sources_list: true
+  conf: |
+    APT {
+        Get {
+            Assume-Yes 'true';
+            Fix-Broken 'true';
+            Install-Recommends 'false';
+        }
+    }
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg2
+  - htop
+  - qemu-guest-agent
+  - software-properties-common
+  - lsb-release
+
+runcmd:
+  - systemctl daemon-reload
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - curl -fsSL https://get.docker.com -o get-docker.sh && echo "Installing Docker"
+  - sh get-docker.sh && echo "Docker installed"
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - systemctl enable docker
+  - systemctl start docker

@@ -1,0 +1,90 @@
+#cloud-config
+users:
+  - name: matt
+    gecos: Matt
+    groups: [wheel, docker]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1027
+    home: /home/matt
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+  - name: s-ansible
+    gecos: s-ansible
+    groups: [wheel, docker]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1040
+    home: /home/s-ansible
+    create_groups: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAIthQd2cPM6/EnGwyTBI2eiErzU4MDK974oV9MhHs5S m@mtopps.xyz
+
+groups:
+  - docker
+  - wheel
+
+timezone: Pacific/Auckland
+swap:
+  filename: none
+  size: 0
+
+preserve_hostname: false
+manage_etc_hosts: true
+ssh:
+  emit_keys_to_console: false
+      
+ntp:
+  enabled: true
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - htop
+  - net-tools
+  - bash
+  - sudo
+  - docker
+  - containerd
+  - iptables
+  - ip6tables
+  - cni-plugins
+
+runcmd:
+  - rc-update add qemu-guest-agent
+  - rc-service qemu-guest-agent start
+  - swapoff -a
+  - sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+  - modprobe br_netfilter
+  # Setup Docker and containerd
+  - rc-update add docker
+  - rc-update add containerd
+  - containerd config default | tee /etc/containerd/config.toml >/dev/null 2>&1
+  - sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+  - rc-service containerd restart
+  # Setup Kubernetes repositories and install
+  - echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+  - apk update
+  - apk add kubernetes kubeadm kubelet kubectl
+  - rc-update add kubelet
+  - sysctl --system
+
+write_files:
+  - path: /etc/modules-load.d/containerd.conf
+    content: |
+      br_netfilter
+      overlay
+
+  - path: /etc/sysctl.d/99-kubernetes-cri.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
